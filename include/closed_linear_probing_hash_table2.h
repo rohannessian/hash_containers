@@ -17,6 +17,8 @@
  * The trade-off is potentially much slower erase time, but faster search times.
  *
  *
+ * https://github.com/rohannessian/hash_containers/
+ *
  * Copyright (c) 2016 Robert Jr Ohannessian
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
