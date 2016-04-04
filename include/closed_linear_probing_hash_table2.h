@@ -6,6 +6,8 @@
  * the same value), we use linear probing to find another free spot in the 
  * array.
  *
+ * Objects used as keys and values must be memcpy()-able to new locations.
+ *
  * This variant rehashes some elements on erase, which causes them to be copied.
  *
  * Thus, this variant better handles cases where erase() is either uncommon, 
@@ -14,13 +16,6 @@
  *
  * The trade-off is potentially much slower erase time, but faster search times.
  *
- * Type:
- *    closed_linear_probing_hash_table2<K, V, hash_functor, default_size=32>
- * Where: 
- *    - <K>            is the type of the key of the associative container.
- *    - <V>            is the type of the value of the associative container.
- *    - <hash_functor> is a functor that will hash the key to a size_t.
- *    - <default_size> is the default size of the container.
  *
  * Copyright (c) 2016 Robert Jr Ohannessian
  *
@@ -58,12 +53,31 @@ namespace hash_containers {
 
 
 
+/* Class: 
+ *     closed_linear_probing_hash_table2<K, V, hash_functor, default_size=32>
+ *
+ * Template Parameters:
+ *    <K>           : the type of the key of the associative container.
+ *    <V>           : the type of the value of the associative container.
+ *    <hash_functor>: a functor that will hash the key to a size_t.
+ *    <default_size>: the default size of the container.
+ *  
+ * In C++11, the hash functor defaults to std::hash<K>
+ *
+ * Objects of this class are associative containers mapping objects of type 
+ * <K> to objects of type <V>, using the hash function <hash_functor>.
+ */
 template <typename K,
 	  typename V, 
-	  typename hash_functor  /*= std::hash<K>*/, 
+#if __cplusplus >= 201103L          
+          typename hash_functor = std::hash<K>,
+#else
+          typename hash_functor,
+#endif
 	  size_t default_size=32 /* must be power of 2, and > 0 */>
 class closed_linear_probing_hash_table2 {
 
+    /* Define the meta-data parameters. */
     typedef uint32_t meta_t;
 
     static const unsigned META_BITS_PER_ELEMENT  = 1;
@@ -139,6 +153,14 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Increases the size of the hash table
+     *
+     * Iterators are all invalidated.
+     *
+     * Parameters:
+     *     <new_size>: The new size of the table. Must be a power of 2 and 
+     *                 strictly greater than 0.
+     */
     HASH_CONTAINERS_NO_INLINE
     void increase_table_size(size_t new_size) {
 
@@ -183,6 +205,23 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Steps to the next index in the table, with wrap-around at the edges.
+     *
+     * Parameters:
+     *     <META_T>   : Metadata type. Template parameter so it can const or 
+     *                  non-const.
+     *     <DATA_T>   : Type of data storage. Template parameter so it can const
+     *                  or non-const.
+     *     <idx>      : Current index in the table.
+     *     <valid_val>: (in/out) Meta-data word for the current position.
+     *     <valid_ptr>: (in/out) Meta-data word pointer for the current 
+     *                  position.
+     *     <data>     : Data storage for the table.
+     *
+     * Returns:
+     *     The next position in the table. <valid_val> and <valid_ptr> are also
+     *     updated to the meta-data word for that position.
+     */
     template <typename META_T, typename DATA_T>
     static HASH_CONTAINERS_INLINE
     size_t step_idx(size_t idx, meta_t &valid_val /* in/out */, META_T *&valid_ptr, DATA_T &data) {
@@ -205,6 +244,22 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Maps the key into the table, returning the index of the matched element.
+     *
+     * Iterators are still valid after get_index().
+     *
+     * Parameters:
+     *     <valid>: (out) Set to true if the returned position is of a valid 
+     *              element (i.e. the key was found in the container). Set to 
+     *              false otherwise.
+     *     <key>  : The key to look-up.
+     *     <data> : The data container to use for the lookup.
+     *     <hash> : The hash of the <key> parameter.
+     *
+     * Returns:
+     *     If <valid> is true, then the return value is the position in the
+     *     data array for the element. Otherwise, the return value is garbage.
+     */
     HASH_CONTAINERS_INLINE
     size_t get_index(bool &valid, const K &key, const data_t &data, size_t hash) const {
         size_t        idx       = hash & data.capacity_minus_1;
@@ -238,6 +293,20 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Maps the key into the table, returning the index of the matched element.
+     *
+     * Iterators are still valid after get_index().
+     *
+     * Parameters:
+     *     <valid>: (out) Set to true if the returned position is of a valid 
+     *              element (i.e. the key was found in the container). Set to 
+     *              false otherwise.
+     *     <key>  : The key to look-up.
+     *
+     * Returns:
+     *     If <valid> is true, then the return value is the position in the
+     *     data array for the element. Otherwise, the return value is garbage.
+     */
     HASH_CONTAINERS_INLINE
     size_t get_index(bool &valid, const K &key) const {
         hash_functor hash_func;
@@ -247,6 +316,24 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Adds a new element to table. The element's key must *not* already be 
+     * present.
+     *
+     * This function could cause a reallocation of the table data and a 
+     * rehash of all elements if the load factor gets too high and there's a 
+     * collision.
+     *
+     * Iterators should be assumed to be invalid after add_new().
+     *
+     * Parameters:
+     *     <key>  : The key to store.
+     *     <value>: The value to store.
+     *     <data> : The data container to use for the lookup.
+     *     <hash> : The hash of the <key> parameter.
+     *
+     * Returns:
+     *     The position of the inserted element.
+     */
     HASH_CONTAINERS_INLINE
     size_t add_new(const K &key, const V &value, data_t &data, size_t hash) {
 
@@ -290,6 +377,22 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Adds a new element to table. The element's key must *not* already be 
+     * present.
+     *
+     * This function could cause a reallocation of the table data and a 
+     * rehash of all elements if the load factor gets too high and there's a 
+     * collision.
+     *
+     * Iterators should be assumed to be invalid after add_new().
+     *
+     * Parameters:
+     *     <key>  : The key to store.
+     *     <value>: The value to store.
+     *
+     * Returns:
+     *     The position of the inserted element.
+     */
     HASH_CONTAINERS_INLINE
     size_t add_new(const K &key, const V &value) {
         hash_functor hash_func;
@@ -300,6 +403,18 @@ class closed_linear_probing_hash_table2 {
 
 
 
+    /* Erases an element from the table.
+     *
+     * Searches for the specified element and, if found, removes it from the
+     * container. If the element was not found, this function has no side 
+     * effect.
+     *
+     * Iterators to other elements are still valid after erase().
+     *
+     * Parameters:
+     *     <key>  : The key of the element to erase.
+     *     <data> : The data container to use for the lookup.
+     */
     HASH_CONTAINERS_INLINE
     void erase(const K &key, data_t &data) {
 
@@ -371,7 +486,12 @@ class closed_linear_probing_hash_table2 {
 
     /* Find the first element in the hash table and returns its position in 
      * the array.
-     * Returns ~0 if the array is empty.
+     *
+     * Iterators are still valid after get_first().
+     *
+     * Returns:
+     *     ~0 if the array is empty.
+     *     The index of the first valid element otherwise.
      */
     HASH_CONTAINERS_INLINE
     size_t get_first() const {
@@ -394,8 +514,19 @@ class closed_linear_probing_hash_table2 {
 
 
 
-    /* Given a position in the array, returns the position of the next element 
-     * in the array.
+    /* Find the next element in the hash table and returns its position in 
+     * the array.
+     *
+     * Iterators are still valid after get_next().
+     *
+     * Parameters:
+     *     <old_pos>: The current position in the array, from a previous call
+     *                to get_first() or get_next(), on the condition that 
+     *                iterators remain valid between such calls and this one.
+     *
+     * Returns:
+     *     ~0 if there are no more valid elements.
+     *     The index of the next valid element otherwise.
      */
     HASH_CONTAINERS_INLINE
     size_t get_next(size_t old_pos) const {
@@ -433,6 +564,8 @@ class closed_linear_probing_hash_table2 {
 
 
 public:
+    /* Default constructor.
+     */
     HASH_CONTAINERS_INLINE
     closed_linear_probing_hash_table2() {
         assert(default_size > 0 && (default_size & (default_size-1)) == 0);
@@ -446,6 +579,8 @@ public:
 
 
 
+    /* Destructor.
+     */
     HASH_CONTAINERS_INLINE
     ~closed_linear_probing_hash_table2() {
 
@@ -476,6 +611,24 @@ public:
 
 
 
+    /* Inserts an element in table. If the specified key is already present,
+     * then 'false' is returned and the container is not modified. If the 
+     * specified key is not present, then the specified key and value pair
+     * are stored in the container and 'true' is returned.
+     *
+     * The insertion of a new element can cause the table to be resized.
+     *
+     * Iterators should be assumed to be invalid after insert(), if it
+     * returns 'true'. Iterators are still valid after insert() when it returns
+     * 'false'.
+     *
+     * Parameters:
+     *     <key>  : The key to store.
+     *     <value>: The value to store.
+     *
+     * Returns:
+     *     'true' if the {<key>, <value>} pair was stored, 'false' otherwise.
+     */
     HASH_CONTAINERS_INLINE
     bool insert(const K &key, const V &value) {
 
@@ -493,6 +646,17 @@ public:
 
 
 
+    /* Erases an element from the table.
+     *
+     * Searches for the specified element and, if found, removes it from the
+     * container. If the element was not found, this function has no side 
+     * effect.
+     *
+     * Iterators to other elements are still valid after erase().
+     *
+     * Parameters:
+     *     <key>  : The key of the element to erase.
+     */
     HASH_CONTAINERS_INLINE
     void erase(const K &key) {
         this->erase(key, this->data);
@@ -500,6 +664,10 @@ public:
 
 
 
+    /* Returns the number of valid elements in the container.
+     *
+     * Iterators are still valid after size().
+     */
     HASH_CONTAINERS_INLINE
     size_t size() const {
         return this->data.size;
@@ -507,6 +675,11 @@ public:
 
 
 
+    /* Returns the number of elements that could potentially be stored in the
+     * container.
+     *
+     * Iterators are still valid after capacity().
+     */
     HASH_CONTAINERS_INLINE
     size_t capacity() const {
         return this->data.capacity_minus_1 + 1;
@@ -514,19 +687,33 @@ public:
 
 
 
-    void reserve(size_t new_size) {
-        if (new_size > this->data.capcity_minus_1 + 1) {
-            new_size = round_up_to_next_power_of_2(new_size);
-            this->increase_table_size(new_size);
+    /* Allocates increased capacity for the container. This function cannot
+     * reduce the capacity of the container; the capacity can only be increased.
+     * 
+     * If <new_capacity> if less than or equal than the current capacity, then
+     * this function does nothing, preserving iterators. Otherwise, the 
+     * container is resized and iterators are invalidated.
+     *
+     * Parameters:
+     *     <new_capacity>: The new capacity of the container, in elements. Must
+     *                     be a non-zero power of 2.
+     */
+    void reserve(size_t new_capacity) {
+        if (new_capacity > this->data.capcity_minus_1 + 1) {
+            new_capacity = round_up_to_next_power_of_2(new_capacity);
+            this->increase_table_size(new_capacity);
         }
     }
 
 
-    // Iterator interface
+    /*******************************************************************
+     * Iterator interface
+     *******************************************************************/
     // TODO: share code for iterator and const_iterator
 
     class const_iterator;
 
+    /* Iterator for the container */
     class iterator : public std::iterator<std::forward_iterator_tag, std::pair<reference_wrapper<const K>, reference_wrapper<V> > > {
 
         friend class closed_linear_probing_hash_table2;
@@ -605,6 +792,7 @@ public:
  
 
  
+    /* Constant Iterator for the container */
     class const_iterator : public std::iterator<std::forward_iterator_tag, std::pair<reference_wrapper<const K>, reference_wrapper<const V> > > {
 
         friend class closed_linear_probing_hash_table2;
@@ -690,6 +878,7 @@ public:
 
 
 
+    /* Returns an iterator to the first element in the container. */
     HASH_CONTAINERS_INLINE
     iterator begin() {
         return iterator(this->get_first(), this);
@@ -697,6 +886,7 @@ public:
 
 
 
+    /* Returns a constant iterator to the first element in the container. */
     HASH_CONTAINERS_INLINE
     const_iterator cbegin() const {
         return const_iterator(this->get_first(), this);
@@ -704,6 +894,7 @@ public:
 
 
 
+    /* Returns an iterator to one past the last element in the container. */
     HASH_CONTAINERS_INLINE
     iterator end() {
         return iterator(~size_t(0), this);
@@ -711,6 +902,9 @@ public:
 
 
 
+    /* Returns a constant iterator to one past the last element in the 
+     * container. 
+     */
     HASH_CONTAINERS_INLINE
     const_iterator cend() const {
         return const_iterator(~size_t(0), this);
@@ -718,6 +912,20 @@ public:
 
 
 
+    /* Looks up the specified key and returns a reference to the corresponding 
+     * value. If the key is not present in the container, then a value object 
+     * is default-constructed and inserted in the container, and then a 
+     * reference to that object is returned.
+     *
+     * Because the operator can insert new elements, iterators are to be
+     * considered invalidated after use.
+     *
+     * Parameters:
+     *     <key>: The key to look-up the associated value for.
+     *
+     * Returns:
+     *     A reference to the corresponding value.
+     */
     HASH_CONTAINERS_INLINE
     V& operator[](const K& key) {
 
@@ -737,6 +945,20 @@ public:
 
 
 
+    /* Looks up the specified key and returns a constant reference to the 
+     * corresponding value. If the key is not present in the container, then 
+     * a value object is default-constructed and inserted in the container, 
+     * and then a constant reference to that object is returned.
+     *
+     * Because the operator can insert new elements, iterators are to be
+     * considered invalidated after use.
+     *
+     * Parameters:
+     *     <key>: The key to look-up the associated value for.
+     *
+     * Returns:
+     *     A constant reference to the corresponding value.
+     */
     HASH_CONTAINERS_INLINE
     const V& operator[](const K& key) const {
 
@@ -756,6 +978,17 @@ public:
 
 
 
+    /* Counts the number of elements in the container matching the specified 
+     * key.
+     *
+     * Parameters:
+     *     <key>: The key to look-up for counting.
+     *
+     * Returns:
+     *     Because there is only ever one element per key, count() can only ever
+     *     return the values 0 (key is not present in the container) or 1 (key 
+     *     is present).
+     */
     HASH_CONTAINERS_INLINE
     size_t count(const K& key) const {
         bool valid;
@@ -765,6 +998,15 @@ public:
 
 
 
+    /* Finds an element in the container using the specified key.
+     *
+     * Parameters:
+     *     <key>: The key to look-up.
+     *
+     * Returns:
+     *     A constant iterator to the element in the container. cend() is 
+     *     returned if no element matches the specified key.
+     */
     HASH_CONTAINERS_INLINE
     const_iterator find(const K& key) const {
         bool valid;
@@ -774,6 +1016,15 @@ public:
 
 
 
+    /* Finds an element in the container using the specified key.
+     *
+     * Parameters:
+     *     <key>: The key to look-up.
+     *
+     * Returns:
+     *     An iterator to the element in the container. end() is returned if 
+     *     no element matches the specified key.
+     */
     HASH_CONTAINERS_INLINE
     iterator find(const K& key) {
         bool valid;
@@ -783,6 +1034,11 @@ public:
 
 
 
+    /* Clears the content of the container. The capacity of the container is
+     * unchanged.
+     *
+     * Iterators are invalidated by clear().
+     */
     HASH_CONTAINERS_INLINE
     void clear() {
 
@@ -805,7 +1061,7 @@ public:
         this->data.size = 0;
     }
 
-};
+}; // class closed_linear_probing_hash_table2
 
 }; // namespace hash_containers
 

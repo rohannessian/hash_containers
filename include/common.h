@@ -1,10 +1,29 @@
+/* Associative container utility functions and definitions.
+ *
+ * Copyright (c) 2016 Robert Jr Ohannessian
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in 
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
 #ifndef INCLUDE_HASH_CONTAINERS_COMMON_H_GUARD
 #define INCLUDE_HASH_CONTAINERS_COMMON_H_GUARD 1
 
 #include <stdint.h>  // For uint32_t
-#if __cplusplus >= 201103L
-#include <functional> // For std::reference_wrapper<>
-#endif
 
 #ifdef _MSC_VER
 #define HASH_CONTAINERS_NO_INLINE __declspec(noinline)
@@ -17,6 +36,9 @@
 
 namespace hash_containers {
 
+
+/* Returns the position of the lowest bit set in the input.
+ */
 HASH_CONTAINERS_INLINE
 uint32_t bsf32_nonzero(uint32_t x)
 {
@@ -31,6 +53,9 @@ uint32_t bsf32_nonzero(uint32_t x)
 
 
 
+/* Invokes the object's ctor() at the specified memory location, without
+ * allocating memory.
+ */
 template <class S1, typename S2>
 HASH_CONTAINERS_INLINE
 static void construct(S1* d, const S2 &v) {
@@ -47,6 +72,9 @@ static void construct(S1* d, const S2 &v) {
 
 
 
+/* Invokes the object's dtor() at the specified memory location, without 
+ * deallocating memory.
+ */
 template <typename S1>
 HASH_CONTAINERS_INLINE
 static void destroy(S1* d) {
@@ -55,8 +83,12 @@ static void destroy(S1* d) {
 
 
 
+/* Rounds up the (unsigned) input to the next power of 2, unless it's already
+ * a power of 2.
+ */
 HASH_CONTAINERS_INLINE
 size_t round_up_to_next_power_of_2(uint32_t v) {
+    assert(((v & 0x80000000) == 0) || (v == 0x80000000));
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -67,8 +99,13 @@ size_t round_up_to_next_power_of_2(uint32_t v) {
 }
 
 
+
+/* Rounds up the (unsigned) input to the next power of 2, unless it's already
+ * a power of 2.
+ */
 HASH_CONTAINERS_INLINE
 size_t round_up_to_next_power_of_2(uint64_t v) {
+    assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -77,6 +114,7 @@ size_t round_up_to_next_power_of_2(uint64_t v) {
     v |= v >> 16;
     v |= v >> 32;
     v++;
+    assert(v);
 }
 
 
@@ -86,6 +124,9 @@ T* addressof(T& arg) {
     return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));
 }
 
+
+
+/* Wraps a reference, so we can copy and assign references */
 template <class T>
 class reference_wrapper {
 public:
