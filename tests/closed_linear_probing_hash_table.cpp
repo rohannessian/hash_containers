@@ -894,6 +894,7 @@ int main() {
             fflush(stdout);
         }
     }
+    printf("\b\b\b\b\b\b100.0%%");
     return 0;
 }
 

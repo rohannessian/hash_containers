@@ -37,92 +37,97 @@
 namespace hash_containers {
 
 
-/* Returns the position of the lowest bit set in the input.
- */
-HASH_CONTAINERS_INLINE
-uint32_t bsf32_nonzero(uint32_t x)
-{
+namespace internal {	
+
+    /* Returns the position of the lowest bit set in the input.
+     */
+    HASH_CONTAINERS_INLINE
+    uint32_t bsf32_nonzero(uint32_t x)
+    {
 #if defined(_WIN32)
-    unsigned long ret;
-    _BitScanForward(&ret, x);
-    return ret;
+        unsigned long ret;
+        _BitScanForward(&ret, x);
+        return ret;
 #else // Assume GCC
-    return __builtin_ctz(x);
+        return __builtin_ctz(x);
 #endif
-}
+    }
 
 
 
-/* Invokes the object's ctor() at the specified memory location, without
- * allocating memory.
- */
-template <class S1, typename S2>
-HASH_CONTAINERS_INLINE
-static void construct(S1* d, const S2 &v) {
+    /* Invokes the object's ctor() at the specified memory location, without
+     * allocating memory.
+     */
+    template <class S1, typename S2>
+    HASH_CONTAINERS_INLINE
+    static void construct(S1* d, const S2 &v) {
 #if (defined _CRTDBG_MAP_ALLOC) && (defined new)
 #pragma push_macro("new")
 #undef new
 #endif
-    new ((void*)d) S1(v);
+        new ((void*)d) S1(v);
 #if (defined _CRTDBG_MAP_ALLOC)
 #pragma pop_macro("new")
 #endif
-
-}
-
-
-
-/* Invokes the object's dtor() at the specified memory location, without 
- * deallocating memory.
- */
-template <typename S1>
-HASH_CONTAINERS_INLINE
-static void destroy(S1* d) {
-    d->~S1();
-}
+    }
 
 
 
-/* Rounds up the (unsigned) input to the next power of 2, unless it's already
- * a power of 2.
- */
-HASH_CONTAINERS_INLINE
-size_t round_up_to_next_power_of_2(uint32_t v) {
-    assert(((v & 0x80000000) == 0) || (v == 0x80000000));
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v++;
-}
+    /* Invokes the object's dtor() at the specified memory location, without 
+     * deallocating memory.
+     */
+    template <typename S1>
+    HASH_CONTAINERS_INLINE
+    static void destroy(S1* d) {
+        d->~S1();
+    }
 
 
 
-/* Rounds up the (unsigned) input to the next power of 2, unless it's already
- * a power of 2.
- */
-HASH_CONTAINERS_INLINE
-size_t round_up_to_next_power_of_2(uint64_t v) {
-    assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
-    v--;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    v |= v >> 32;
-    v++;
-    assert(v);
-}
+    /* Rounds up the (unsigned) input to the next power of 2, unless it's 
+     * already a power of 2.
+     */
+    HASH_CONTAINERS_INLINE
+    size_t round_up_to_next_power_of_2(uint32_t v) {
+        assert(((v & 0x80000000) == 0) || (v == 0x80000000));
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        v++;
+    }
 
 
 
-template< class T >
-T* addressof(T& arg) {
-    return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));
-}
+    /* Rounds up the (unsigned) input to the next power of 2, unless it's 
+     * already a power of 2.
+     */
+    HASH_CONTAINERS_INLINE
+    size_t round_up_to_next_power_of_2(uint64_t v) {
+        assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
+        v--;
+        v |= v >> 1;
+        v |= v >> 2;
+        v |= v >> 4;
+        v |= v >> 8;
+        v |= v >> 16;
+        v |= v >> 32;
+        v++;
+        assert(v);
+    }
+
+
+
+    template< class T >
+    T* addressof(T& arg) {
+        return reinterpret_cast<T*>(&const_cast<char&>(reinterpret_cast<const volatile char&>(arg)));
+    }
+
+
+
+}; // namespace internal
 
 
 
@@ -131,16 +136,16 @@ template <class T>
 class reference_wrapper {
 public:
     typedef T type;
- 
+     
 #if __cplusplus >= 201103L
-    reference_wrapper(T& ref) noexcept : _ptr(hash_containers::addressof(ref)) {}
+    reference_wrapper(T& ref) noexcept : _ptr(hash_containers::internal::addressof(ref)) {}
     reference_wrapper(T&&) = delete;
     reference_wrapper(const reference_wrapper&) noexcept = default;
     reference_wrapper& operator=(const reference_wrapper& x) noexcept = default;
     operator T& () const noexcept { return *_ptr; }
     T& get() const noexcept { return *_ptr; }
 #else
-    reference_wrapper(T& ref) : _ptr(addressof(ref)) {}
+    reference_wrapper(T& ref) : _ptr(internal::addressof(ref)) {}
     reference_wrapper(const reference_wrapper& other) { this->_ptr = other._ptr; }
     reference_wrapper& operator=(const reference_wrapper& other) {this->_ptr = other._ptr; }
     operator T& () const { return *_ptr; }

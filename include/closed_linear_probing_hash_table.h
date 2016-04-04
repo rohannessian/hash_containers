@@ -192,8 +192,8 @@ class closed_linear_probing_hash_table {
             if ((valid_val & ((meta_t(1) << META_BITS_PER_ELEMENT) - 1)) == VALID) {
                 size_t hash = hash_func(this->data.key_table[i]);
                 this->add_new(this->data.key_table[i], this->data.value_table[i], new_data, hash);
-                destroy(&this->data.key_table[i]);
-                destroy(&this->data.value_table[i]);
+                internal::destroy(&this->data.key_table[i]);
+                internal::destroy(&this->data.value_table[i]);
             }
             valid_val >>= META_BITS_PER_ELEMENT;
             if ((i & (META_ELEMENTS_PER_WORD - 1)) == (META_ELEMENTS_PER_WORD - 1)) {
@@ -361,8 +361,8 @@ class closed_linear_probing_hash_table {
                            |                                                     (VALID << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
                 //data.key_table[idx]   = new (data.key_table[idx]) K(key);
                 //data.value_table[idx] = new (data.value_table[idx]) V(value);
-                construct(&data.key_table[idx],   key);
-                construct(&data.value_table[idx], value);
+		internal::construct(&data.key_table[idx],   key);
+                internal::construct(&data.value_table[idx], value);
                 data.size++;
                 return idx;
             }
@@ -444,8 +444,8 @@ class closed_linear_probing_hash_table {
         assert(data.size);
         assert(data.key_table[idx] == key);
 
-        destroy(&data.key_table[idx]);
-        destroy(&data.value_table[idx]);
+        internal::destroy(&data.key_table[idx]);
+        internal::destroy(&data.value_table[idx]);
 
         const size_t word = idx / META_ELEMENTS_PER_WORD;
         data.valid[word] = (data.valid[word] & ~(((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1)))))
@@ -479,7 +479,7 @@ class closed_linear_probing_hash_table {
                 continue;
             }
 
-            const unsigned bit = bsf32_nonzero(*valid_ptr & mask);
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
 
             return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
         }
@@ -517,7 +517,7 @@ class closed_linear_probing_hash_table {
         // Can find the next item in the same chunk as the current one?
         meta_t next_mask = *valid_ptr & (~meta_t(0) << ((old_pos & (META_ELEMENTS_PER_WORD - 1)) * META_BITS_PER_ELEMENT + 1));
         if (next_mask & mask) {
-            const unsigned bit = bsf32_nonzero(next_mask & mask);
+            const unsigned bit = internal::bsf32_nonzero(next_mask & mask);
             return (old_pos & ~(META_ELEMENTS_PER_WORD - 1)) + bit / META_BITS_PER_ELEMENT;
         }
         
@@ -530,7 +530,7 @@ class closed_linear_probing_hash_table {
                 continue;
             }
 
-            const unsigned bit = bsf32_nonzero(*valid_ptr & mask);
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
 
             return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
         }
@@ -567,8 +567,8 @@ public:
 
         for (size_t i = 0; i <= this->data.capacity_minus_1; i++) {
             if ((valid_val & ((meta_t(1) << META_BITS_PER_ELEMENT) - 1)) == VALID) {
-                destroy(&this->data.key_table[i]);
-                destroy(&this->data.value_table[i]);
+                internal::destroy(&this->data.key_table[i]);
+                internal::destroy(&this->data.value_table[i]);
             }
             valid_val >>= META_BITS_PER_ELEMENT;
             if ((i & (META_ELEMENTS_PER_WORD - 1)) == (META_ELEMENTS_PER_WORD - 1)) {
@@ -678,7 +678,7 @@ public:
      */
     void reserve(size_t new_capacity) {
         if (new_capacity > this->data.capcity_minus_1 + 1) {
-            new_capacity = round_up_to_next_power_of_2(new_capacity);
+            new_capacity = internal::round_up_to_next_power_of_2(new_capacity);
             this->increase_table_size(new_capacity);
         }
     }
@@ -1027,8 +1027,8 @@ public:
 
         for (size_t i = 0; i <= this->data.capacity_minus_1; i++) {
             if ((valid_val & ((meta_t(1) << META_BITS_PER_ELEMENT) - 1)) == VALID) {
-                destroy(&this->data.key_table[i]);
-                destroy(&this->data.value_table[i]);
+                internal::destroy(&this->data.key_table[i]);
+                internal::destroy(&this->data.value_table[i]);
             }
             valid_val >>= META_BITS_PER_ELEMENT;
             if ((i & (META_ELEMENTS_PER_WORD - 1)) == (META_ELEMENTS_PER_WORD - 1)) {
