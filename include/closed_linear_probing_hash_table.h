@@ -679,7 +679,7 @@ public:
      *                     be a non-zero power of 2.
      */
     void reserve(size_t new_capacity) {
-        if (new_capacity > this->data.capcity_minus_1 + 1) {
+        if (new_capacity > this->data.capacity_minus_1 + 1) {
             new_capacity = internal::round_up_to_next_power_of_2(new_capacity);
             this->increase_table_size(new_capacity);
         }

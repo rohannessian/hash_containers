@@ -29,15 +29,15 @@
 #define HASH_CONTAINERS_NO_INLINE __declspec(noinline)
 #define HASH_CONTAINERS_INLINE    __forceinline
 #else
-#define HASH_CONTAINERS_NO_INLINE /* TBD */
-#define HASH_CONTAINERS_INLINE    /* TBD */
+#define HASH_CONTAINERS_NO_INLINE __attribute__((noinline))
+#define HASH_CONTAINERS_INLINE    __attribute__((always_inline)) inline
 #endif
 
 
 namespace hash_containers {
 
 
-namespace internal {	
+namespace internal {
 
     /* Returns the position of the lowest bit set in the input.
      */
@@ -88,7 +88,8 @@ namespace internal {
      * already a power of 2.
      */
     HASH_CONTAINERS_INLINE
-    size_t round_up_to_next_power_of_2(uint32_t v) {
+    size_t round_up_to_next_power_of_2(uint32_t orig) {
+        uint32_t v = orig;
         assert(((v & 0x80000000) == 0) || (v == 0x80000000));
         v--;
         v |= v >> 1;
@@ -97,6 +98,8 @@ namespace internal {
         v |= v >> 8;
         v |= v >> 16;
         v++;
+        assert(!orig || v);
+        return v;
     }
 
 
@@ -105,7 +108,8 @@ namespace internal {
      * already a power of 2.
      */
     HASH_CONTAINERS_INLINE
-    size_t round_up_to_next_power_of_2(uint64_t v) {
+    size_t round_up_to_next_power_of_2(uint64_t orig) {
+        uint64_t v = orig;
         assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
         v--;
         v |= v >> 1;
@@ -115,7 +119,8 @@ namespace internal {
         v |= v >> 16;
         v |= v >> 32;
         v++;
-        assert(v);
+        assert(!orig || v);
+        return v;
     }
 
 

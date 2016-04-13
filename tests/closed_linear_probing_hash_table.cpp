@@ -863,12 +863,84 @@ int run_test(unsigned test_num, uint64_t random_number, bool debug = false) {
 
 
 
+
+int run_directed_test_0(bool debug = false) {
+
+    std::unordered_map<uint8_t, uint32_t> gold;
+    hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t, std::hash<uint8_t> > comp;
+    
+    comp.reserve(3);
+    comp.reserve(33);
+    comp.reserve(1023);
+    comp[ 5] = 3;
+    comp[17] = 8;
+    comp[99] = 2;
+    comp[ 0] = 8;
+    comp[ 1] = 6;
+
+    gold[ 5] = 3;
+    gold[17] = 8;
+    gold[99] = 2;
+    gold[ 0] = 8;
+    gold[ 1] = 6;
+    
+    std::vector<std::pair<uint32_t, uint32_t> > gold_v(gold.cbegin(), gold.cend());
+    std::vector<std::pair<uint32_t, uint32_t> > comp_v(comp.cbegin(), comp.cend());
+
+    std::sort(gold_v.begin(), gold_v.end());
+    std::sort(comp_v.begin(), comp_v.end());
+
+    if (debug) {
+        printf("In directed test 0:\n");
+        for (size_t i = 0; i < std::min(gold_v.size(), comp_v.size()); i++) {
+            if (gold_v[i] != comp_v[i]) {
+                printf("gold[0x%02x] = 0x%08x;  comp[0x%02x] = 0x%08x; /* at idx=%u */\n", gold_v[i].first, gold_v[i].second, comp_v[i].first, comp_v[i].second, i);
+            }
+        }
+        for (size_t i = std::min(gold_v.size(), comp_v.size()); i < gold_v.size(); i++) {
+            printf("gold[0x%02x] = 0x%08x; /* at idx=%u */\n", gold_v[i].first, gold_v[i].second, i);
+        }
+        for (size_t i = std::min(gold_v.size(), comp_v.size()); i < comp_v.size(); i++) {
+            printf("comp[0x%02x] = 0x%08x; /* at idx=%u */\n", comp_v[i].first, comp_v[i].second, i);
+        }
+        printf("");
+        return 1;
+    }
+
+    if (gold_v.size() != comp_v.size()) {
+        printf("size mismatch: gold: %u vs comp: %u\n", gold_v.size(), comp_v.size());
+        return 1;
+    }
+
+    auto u = std::mismatch(gold_v.begin(), gold_v.end(), comp_v.begin());
+    if (u.first != gold_v.end()) {
+        printf("data mismatch: gold (%u, %u) vs comp: (%u, %u)\n", u.first->first, u.first->second, u.second->first, u.second->second);
+        return 1;
+    }
+
+    return 0;
+}
+
+
+
 int main() {
     
 #if (defined _DEBUG) && (defined _MSC_VER)
     _CrtSetDbgFlag ( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF /* | _CRTDBG_CHECK_ALWAYS_DF */ );
     _CrtSetReportMode ( _CRT_ERROR, _CRTDBG_MODE_DEBUG );
 #endif
+
+    /* Directed tests */
+
+    int ret;
+    ret = run_directed_test_0();
+    if (ret) {
+        run_directed_test_0(/*debug*/true);
+        return ret;
+    }
+  
+
+    /* Randoms tests */
 
     std::mt19937_64 rng(static_cast<uint32_t>(time(NULL)));
 
@@ -894,7 +966,7 @@ int main() {
             fflush(stdout);
         }
     }
-    printf("\b\b\b\b\b\b100.0%%");
+    printf("\b\b\b\b\b\b100.0%%\n");
     return 0;
 }
 

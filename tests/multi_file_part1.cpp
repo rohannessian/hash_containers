@@ -1,4 +1,5 @@
-/* Tests that the code compiles in C++98.
+/* Tests that the code links with multiple files instantiating the exact same 
+ * template (part 2 of 2).
  */
 #include <vector>
 #include <string>
@@ -6,18 +7,13 @@
 #include "closed_linear_probing_hash_table.h"
 #include "closed_linear_probing_hash_table2.h"
 
-struct hash_function_u8 {
-    size_t operator()(uint8_t u8) {
-	return u8;
-    }
-};
+hash_containers::closed_linear_probing_hash_table< uint8_t, uint32_t> gtest2;
+hash_containers::closed_linear_probing_hash_table2<uint8_t, uint32_t> gtest3;
 
+int function1() {
 
-
-int main() {
-
-    hash_containers::closed_linear_probing_hash_table< uint8_t, uint32_t, hash_function_u8 > test0;
-    hash_containers::closed_linear_probing_hash_table2<uint8_t, uint32_t, hash_function_u8 > test1;
+    hash_containers::closed_linear_probing_hash_table< uint8_t, uint32_t> test0;
+    hash_containers::closed_linear_probing_hash_table2<uint8_t, uint32_t> test1;
 
     test0.reserve(3);
     test1.reserve(3);
@@ -56,8 +52,8 @@ int main() {
     std::vector<std::pair<const uint8_t, const uint32_t> > v1(test1.cbegin(), test1.cend());
 
 
-    hash_containers::closed_linear_probing_hash_table< uint8_t, std::string, hash_function_u8 > test2;
-    hash_containers::closed_linear_probing_hash_table2<uint8_t, std::string, hash_function_u8 > test3;
+    hash_containers::closed_linear_probing_hash_table< uint8_t, std::string> test2;
+    hash_containers::closed_linear_probing_hash_table2<uint8_t, std::string> test3;
     
     test2[0] = "foo";
     test3[0] = "bar";
