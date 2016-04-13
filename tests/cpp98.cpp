@@ -43,6 +43,9 @@ int main() {
     test0.cend();
     test1.cend();
 
+    (*test0.begin()).second = 3;
+    (*test1.begin()).second = 3;
+
     std::vector<std::pair<const uint8_t, const uint32_t> > v0(test0.cbegin(), test0.cend());
     std::vector<std::pair<const uint8_t, const uint32_t> > v1(test1.cbegin(), test1.cend());
 

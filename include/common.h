@@ -147,10 +147,11 @@ public:
 #else
     reference_wrapper(T& ref) : _ptr(internal::addressof(ref)) {}
     reference_wrapper(const reference_wrapper& other) { this->_ptr = other._ptr; }
-    reference_wrapper& operator=(const reference_wrapper& other) {this->_ptr = other._ptr; }
+    reference_wrapper& operator=(const reference_wrapper& other) { this->_ptr = other._ptr; return *this; }
     operator T& () const { return *_ptr; }
     T& get() const { return *_ptr; }
 #endif
+    reference_wrapper& operator=(const T& other) { *this->_ptr = other; return *this; };
  
 private:
     T* _ptr;
