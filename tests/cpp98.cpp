@@ -4,11 +4,10 @@
 #include <string>
 #include <stdint.h>
 #include "closed_linear_probing_hash_table.h"
-#include "closed_linear_probing_hash_table2.h"
 
 struct hash_function_u8 {
     size_t operator()(uint8_t u8) {
-	return u8;
+        return u8;
     }
 };
 
@@ -17,7 +16,7 @@ struct hash_function_u8 {
 int main() {
 
     hash_containers::closed_linear_probing_hash_table< uint8_t, uint32_t, hash_function_u8 > test0;
-    hash_containers::closed_linear_probing_hash_table2<uint8_t, uint32_t, hash_function_u8 > test1;
+    hash_containers::closed_linear_probing_hash_table< uint8_t, uint32_t, hash_function_u8, hash_containers::erase_policy_use_marker > test1;
 
     test0.reserve(3);
     test1.reserve(3);
@@ -57,7 +56,7 @@ int main() {
 
 
     hash_containers::closed_linear_probing_hash_table< uint8_t, std::string, hash_function_u8 > test2;
-    hash_containers::closed_linear_probing_hash_table2<uint8_t, std::string, hash_function_u8 > test3;
+    hash_containers::closed_linear_probing_hash_table< uint8_t, std::string, hash_function_u8, hash_containers::erase_policy_use_marker > test3;
     
     test2[0] = "foo";
     test3[0] = "bar";

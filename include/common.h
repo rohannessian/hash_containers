@@ -73,6 +73,10 @@ namespace internal {
 
 
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4100) // warning C4100: 'd' : unreferenced formal parameter
+#endif
     /* Invokes the object's dtor() at the specified memory location, without 
      * deallocating memory.
      */
@@ -81,6 +85,9 @@ namespace internal {
     static void destroy(S1* d) {
         d->~S1();
     }
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 
 
@@ -88,37 +95,44 @@ namespace internal {
      * already a power of 2.
      */
     HASH_CONTAINERS_INLINE
-    size_t round_up_to_next_power_of_2(uint32_t orig) {
-        uint32_t v = orig;
-        assert(((v & 0x80000000) == 0) || (v == 0x80000000));
+    size_t round_up_to_next_power_of_2(size_t orig) {
+        size_t v = orig;
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4127) // warning C4127: conditional expression is constant
+#endif
+        if (sizeof(size_t) == 8) {
+            assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
+        }
+        else if (sizeof(size_t) == 4) {
+            assert(((v & 0x80000000) == 0) || (v == 0x80000000));
+        }
+        else {
+            assert(0 && "Unsupported size_t size");
+        }
+
         v--;
         v |= v >> 1;
         v |= v >> 2;
         v |= v >> 4;
         v |= v >> 8;
         v |= v >> 16;
+        if (sizeof(size_t) == 8) {
+#if defined _MSC_VER && !defined _WIN64
+#pragma warning(push)          // Turn off this warning in 32-bit builds (where size_t is known to not be 8)
+#pragma warning(disable: 4293) // warning C4293: '>>' : shift count negative or too big, undefined behavior
+#endif
+            v |= v >> 32;
+#if defined _MSC_VER && !defined _WIN64
+#pragma warning(pop)
+#endif
+        }
         v++;
-        assert(!orig || v);
-        return v;
-    }
 
-
-
-    /* Rounds up the (unsigned) input to the next power of 2, unless it's 
-     * already a power of 2.
-     */
-    HASH_CONTAINERS_INLINE
-    size_t round_up_to_next_power_of_2(uint64_t orig) {
-        uint64_t v = orig;
-        assert(((v & 0x8000000000000000ull) == 0) || (v == 0x8000000000000000ull));
-        v--;
-        v |= v >> 1;
-        v |= v >> 2;
-        v |= v >> 4;
-        v |= v >> 8;
-        v |= v >> 16;
-        v |= v >> 32;
-        v++;
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
         assert(!orig || v);
         return v;
     }

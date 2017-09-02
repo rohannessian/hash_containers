@@ -14,15 +14,15 @@ closed_linear_probing_hash_table: closed_linear_probing_hash_table.cpp ../includ
 	gcc -o $@ $< -I../include -std=c++11 -lstdc++ -O3 -DNDEBUG=1
 	./$@$(EXE)
 
-closed_linear_probing_hash_table2: closed_linear_probing_hash_table2.cpp ../include/closed_linear_probing_hash_table2.h ../include/common.h Makefile
+closed_linear_probing_hash_table2: closed_linear_probing_hash_table2.cpp ../include/closed_linear_probing_hash_table.h ../include/common.h Makefile
 	gcc -o $@ $< -I../include -std=c++11 -lstdc++ -O3 -DNDEBUG=1
 	./$@$(EXE)
 
-cpp98: cpp98.cpp ../include/closed_linear_probing_hash_table.h ../include/closed_linear_probing_hash_table2.h ../include/common.h Makefile
+cpp98: cpp98.cpp ../include/closed_linear_probing_hash_table.h ../include/common.h Makefile
 	gcc -o $@ $< -I../include -std=c++98 -lstdc++ -D_DEBUG=1
 	./$@$(EXE)
 
-multi_file: multi_file_part0.cpp multi_file_part1.cpp | ../include/closed_linear_probing_hash_table.h ../include/closed_linear_probing_hash_table2.h ../include/common.h Makefile
+multi_file: multi_file_part0.cpp multi_file_part1.cpp | ../include/closed_linear_probing_hash_table.h ../include/common.h Makefile
 	gcc -o $@ $^ -I../include -std=c++11 -lstdc++
 	./$@$(EXE)
 

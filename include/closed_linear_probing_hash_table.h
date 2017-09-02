@@ -6,24 +6,31 @@
  * the same value), we use linear probing to find another free spot in the 
  * array.
  *
- * Objects used as keys and values must be memcpy()-able to new locations.
+ * Objects must either be POD types, or must provide the appropriate ctors and
+ * assignment operators.
  *
- * This variant does not rehash elements on erase. Instead, erase marks the 
- * erased element as deleted. Then on searches, deleted elements do not stop
- * the probing.
  *
- * Because elements are not copied on erase, this variant better handles cases
- * where erase() is commonly used, and value objects that have slow copy ctor 
- * or assignment operators (e.g. complex types), or slow key hash functions 
- * (e.g. hash on long strings).
+ * Multiple policies are available for erasure:
+ *   1- erase_policy_rehash (default)
+ *      Rehashes some elements on an erase. This can cause elements to move
+ *      around (which costs performance during erase()), but the resulting
+ *      table will have fewer key conflicts (better search/insert performance).
+ *      This variant better handles cases where erase() is either uncommon, 
+ *      or key and value objects have fast copy ctor or assignment operators
+ *      (e.g. basic types, std::shared_ptr<>), and fast key hash functions.
  *
- * The trade-off is slightly slower key look-up times, from having to probe
- * more elements and from having to read more bytes while doing so.
- *
+ *   2- erase_policy_use_marker
+ *      Records a special marker in the deleted item's slot on erase(). This
+ *      allows for erase() to be as fast as insert(), but will cause more
+ *      apparent conflicts on future searches.
+ *      Because elements are not copied on erase, this variant better handles
+ *      cases where erase() is commonly used, and value objects that have slow
+ *      copy ctor or assignment operators (e.g. complex types), or slow key
+ *      hash functions (e.g. hash on long strings).
  *
  * https://github.com/rohannessian/hash_containers/
  *
- * Copyright (c) 2016 Robert Jr Ohannessian
+ * Copyright (c) 2016, 2017 Robert Jr Ohannessian
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -58,20 +65,25 @@
 
 namespace hash_containers {
 
+struct erase_policy_rehash;
 
 /* Class: 
- *     closed_linear_probing_hash_table<K, V, hash_functor, default_size=32>
+ *     closed_linear_probing_hash_table<K, V,
+ *                                      hash_functor = std::hash<K>, // C++11
+ *                                      erase_policy = erase_policy_rehash,
+ *                                      default_size = 32
+ *                                      >
+ *  
+ * Objects of this class are associative containers mapping objects of type 
+ * <K> to objects of type <V>, using the hash function <hash_functor>.
  *
  * Template Parameters:
  *    <K>           : the type of the key of the associative container.
  *    <V>           : the type of the value of the associative container.
- *    <hash_functor>: a functor that will hash the key to a size_t.
+ *    <hash_functor>: a functor that will hash the key to a size_t. Default
+ *                    value is only provided in C++11.
+ *    <erase_policy>: the policy to use on erase().
  *    <default_size>: the default size of the container.
- *  
- * In C++11, the hash functor defaults to std::hash<K>
- *
- * Objects of this class are associative containers mapping objects of type 
- * <K> to objects of type <V>, using the hash function <hash_functor>.
  */
 template <typename K,
           typename V,
@@ -80,12 +92,143 @@ template <typename K,
 #else
           typename hash_functor,
 #endif
-          size_t default_size=32 /* must be power of 2, and > 0 */>
-class closed_linear_probing_hash_table {
+          class  erase_policy = erase_policy_rehash,
+          size_t default_size = 32 /* must be power of 2, and > 0 */
+          >
+class closed_linear_probing_hash_table;
+
+
+/***************************************************************************
+ * erase() policies
+ */
+
+struct erase_policy_rehash {
+   
+    /* Define the meta-data parameters. */
+    typedef uint32_t meta_t;
+
+    static const unsigned META_BITS_PER_ELEMENT  = 1;
+    static const unsigned META_BITS_PER_WORD     = sizeof(meta_t) * CHAR_BIT;                  // Must be power of 2. static_assert?
+    static const unsigned META_ELEMENTS_PER_WORD = META_BITS_PER_WORD / META_BITS_PER_ELEMENT; // Must be power of 2. static_assert?
+    static const unsigned INVALID                = 0;
+    static const unsigned VALID                  = 1;
+    static const unsigned DEFAULT_META_VALUE     = 0; // Must be INVALID replicated to all bits
+
+    template <typename K, typename V, typename hash_functor>
+    HASH_CONTAINERS_INLINE
+    static void do_erase(size_t orig_idx, meta_t *valid, size_t capacity_minus_1,
+                      K* key_table, V* value_table, const hash_functor &/*hash_func*/) {
+
+        /* Rehash the contiguous span of entries from the point of deletion.
+         * See https://en.wikipedia.org/wiki/Open_addressing for details.
+         */
+        size_t idx  = orig_idx;
+        size_t idx2 = orig_idx;
+
+#if (defined _MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4127)
+#endif
+
+        while (true) {
+
+#if (defined _MSC_VER)
+#pragma warning(pop)
+#endif
+
+            // Mark current entry as invalid
+            const size_t word = idx / META_ELEMENTS_PER_WORD;
+            valid[word] &= ~(((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
+
+            // Move to next entry
+        next_entry:
+            idx2 = (idx2 + 1) & capacity_minus_1;
+            const size_t word2 = idx2 / META_ELEMENTS_PER_WORD;
+
+            // If entry is empty (not valid && not deleted), then we can stop
+            if (!(valid[word2] & (((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx2 & (META_ELEMENTS_PER_WORD - 1)))))) {
+                break;
+            }
+
+            // Otherwise, we need to rehash that entry
+            const size_t key2 = hash_functor()(key_table[idx2]) & capacity_minus_1;
+
+            if ((idx <= idx2) ? ((idx < key2) && (key2 <= idx2)) : ((idx < key2) || (key2 <= idx2))) {
+                goto next_entry;
+            }
+
+            internal::construct(&key_table  [idx ], key_table  [idx2]);
+            internal::construct(&value_table[idx ], value_table[idx2]);
+            internal::destroy(  &key_table  [idx2]);
+            internal::destroy(  &value_table[idx2]);
+
+            valid[word] |= (((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
+
+            idx = idx2;
+        }
+    }
+
+
+    /* For forward iterating */
+    HASH_CONTAINERS_INLINE
+    static size_t get_first(size_t capacity_minus_1, meta_t *valid_ptr) {
+            
+        const size_t num_valid_words = (capacity_minus_1 + META_ELEMENTS_PER_WORD) / META_ELEMENTS_PER_WORD;
+
+        for (size_t word = 0; word < num_valid_words; word++) {
+
+            if (!*valid_ptr) {
+                valid_ptr++;
+                continue;
+            }
+
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr);
+
+            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
+        }
+        return ~size_t(0);
+    }
+
+
+
+
+    /* For forward iterating */
+    HASH_CONTAINERS_INLINE
+    static size_t get_next(size_t old_pos, meta_t *valid_ptr, size_t num_valid_words) {
+            
+        // Can find the next item in the same chunk as the current one?
+        meta_t next_mask = *valid_ptr & ((~meta_t(0)) << ((old_pos & (META_ELEMENTS_PER_WORD - 1)) * META_BITS_PER_ELEMENT) << 1);
+        if (next_mask) {
+            const unsigned bit = internal::bsf32_nonzero(next_mask);
+            return (old_pos & ~(META_ELEMENTS_PER_WORD - 1)) + bit / META_BITS_PER_ELEMENT;
+        }
+        
+        // Look in later chunks for the next element.
+        valid_ptr++;
+        for (size_t word = (old_pos / META_ELEMENTS_PER_WORD) + 1; word < num_valid_words; word++) {
+
+            if (!*valid_ptr) {
+                valid_ptr++;
+                continue;
+            }
+
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr);
+
+            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
+        }
+        
+        // Didn't find it
+        return ~size_t(0);
+    }
+};
+
+
+
+struct erase_policy_use_marker {
 
     /* Describe the various states any one entry can be in */
     enum {
-        INVALID,
+        INVALID = 0, // Must be 0; rest of code assumes that implicitly
         VALID,
         DELETED,
     };
@@ -97,16 +240,81 @@ class closed_linear_probing_hash_table {
     static const unsigned META_BITS_PER_WORD     = sizeof(meta_t) * CHAR_BIT;                  // Must be power of 2. static_assert?
     static const unsigned META_ELEMENTS_PER_WORD = META_BITS_PER_WORD / META_BITS_PER_ELEMENT; // Must be power of 2. static_assert?
 
+    static const unsigned DEFAULT_META_VALUE = 0;
 
-    /* Default static allocated tables, to avoid malloc() for small tables.
-     */
-    char   default_key_table[default_size * sizeof(K)];
-    char   default_val_table[default_size * sizeof(V)];
-    meta_t default_valid[(default_size + META_ELEMENTS_PER_WORD - 1) / META_ELEMENTS_PER_WORD];
+    template <typename K, typename V, typename hash_functor>
+    static HASH_CONTAINERS_INLINE 
+    void do_erase(size_t idx, meta_t *valid, size_t /*capacity_minus_1*/,
+                      K* /*key_table*/, V* /*value_table*/, const hash_functor &/*hash_func*/) {
+            
+        const size_t word = idx / META_ELEMENTS_PER_WORD;
+        valid[word] = (valid[word] & ~(((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1)))))
+                    |                                                    (DELETED << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
+    }
+
+
+    /* For forward iterating */
+    HASH_CONTAINERS_INLINE
+    static size_t get_first(size_t capacity_minus_1, meta_t *valid_ptr) {
+
+        const size_t num_valid_words = (capacity_minus_1 + META_ELEMENTS_PER_WORD) / META_ELEMENTS_PER_WORD;
+        // static_assert VALID == 1, INVALID == 0, META_BITS_PER_ELEMENT == 2
+        const meta_t mask = 0x55555555;
+
+        for (size_t word = 0; word < num_valid_words; word++) {
+            if (!(*valid_ptr & mask)) {
+                valid_ptr++;
+                continue;
+            }
+
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
+
+            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
+        }
+        return ~size_t(0);
+    }
 
 
 
-    struct data_t {
+    /* For forward iterating */
+    HASH_CONTAINERS_INLINE
+    static size_t get_next(size_t old_pos, meta_t *valid_ptr, size_t num_valid_words) {
+
+        // static_assert VALID == 1, INVALID == 0, META_BITS_PER_ELEMENT == 2
+        const meta_t mask = 0x55555555;
+
+        // Can find the next item in the same chunk as the current one?
+        meta_t next_mask = *valid_ptr & (~meta_t(0) << ((old_pos & (META_ELEMENTS_PER_WORD - 1)) * META_BITS_PER_ELEMENT + 1));
+        if (next_mask & mask) {
+            const unsigned bit = internal::bsf32_nonzero(next_mask & mask);
+            return (old_pos & ~(META_ELEMENTS_PER_WORD - 1)) + bit / META_BITS_PER_ELEMENT;
+        }
+        
+        // Look in later chunks for the next element.
+        valid_ptr++;
+        for (size_t word = (old_pos / META_ELEMENTS_PER_WORD) + 1; word < num_valid_words; word++) {
+
+            if (!(*valid_ptr & mask)) {
+                valid_ptr++;
+                continue;
+            }
+
+            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
+
+            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
+        }
+
+        // Didn't find it
+        return ~size_t(0);
+    }
+};
+
+
+namespace internal {
+
+    template <typename K, typename V, typename erase_policy>
+    struct closed_linear_probing_hash_table_data_t {
+
         /* Keep valid, key and data in separate arrays, because we want
          * to maximize D$ usage when doing searches.
          *
@@ -114,17 +322,20 @@ class closed_linear_probing_hash_table {
          *
          * Those arrays are indexed by the hash.
          */
-        K        *key_table;
-        V        *value_table;
-        meta_t   *valid;
-        size_t    size;
-        size_t    capacity_minus_1;
+        K                             *key_table;
+        V                             *value_table;
+        typename erase_policy::meta_t *valid;
+        size_t                         size;
+        size_t                         capacity_minus_1;
 
-        data_t() : key_table(NULL), value_table(NULL), valid(NULL), size(0), capacity_minus_1(0) {}
+
+        closed_linear_probing_hash_table_data_t() :
+                   key_table(NULL), value_table(NULL), valid(NULL), size(0),
+                   capacity_minus_1(0) {}
 
 
         HASH_CONTAINERS_NO_INLINE
-        data_t(size_t capacity) {
+        closed_linear_probing_hash_table_data_t(size_t capacity) {
 
             assert(capacity > 0);
             assert((capacity & (capacity - 1)) == 0);
@@ -142,29 +353,57 @@ class closed_linear_probing_hash_table {
             this->value_table = new V[capacity];
             this->valid       = new meta_t[(capacity + META_ELEMENTS_PER_WORD - 1) / META_ELEMENTS_PER_WORD];
             */
-            const size_t meta_size    = (capacity + META_ELEMENTS_PER_WORD - 1) / META_ELEMENTS_PER_WORD * sizeof(meta_t);
+            const size_t meta_size    = (capacity + erase_policy::META_ELEMENTS_PER_WORD - 1) / erase_policy::META_ELEMENTS_PER_WORD * sizeof(typename erase_policy::meta_t);
             const size_t K_size       = sizeof(K) * capacity;
             const size_t V_size       = sizeof(V) * capacity;
-            const size_t padding_size = sizeof(K) + sizeof(V) + sizeof(meta_t); // Padding for type alignment
+            const size_t padding_size = sizeof(K) + sizeof(V) + sizeof(typename erase_policy::meta_t); // Padding for type alignment
 
+            // Note: malloc() is guaranteed to properly align the allocation for any
+            // valid object.
             char *memory = (char*)malloc(meta_size + K_size + V_size + padding_size);
             assert(memory);
 
             const size_t K_offs =       meta_size +  meta_size        % sizeof(K);
             const size_t V_offs = K_offs + K_size + (K_offs + K_size) % sizeof(V);
 
-            this->valid       = reinterpret_cast<meta_t*>(memory);
+            this->valid       = reinterpret_cast<typename erase_policy::meta_t*>(memory);
             this->key_table   = reinterpret_cast<K*>(memory + K_offs);
             this->value_table = reinterpret_cast<V*>(memory + V_offs);
 
-            assert(INVALID == 0);
-            memset(this->valid, 0, ((capacity + META_ELEMENTS_PER_WORD - 1) / META_ELEMENTS_PER_WORD) * sizeof(meta_t));
+            memset(this->valid, erase_policy::DEFAULT_META_VALUE, ((capacity + erase_policy::META_ELEMENTS_PER_WORD - 1) / erase_policy::META_ELEMENTS_PER_WORD) * sizeof(typename erase_policy::meta_t));
 
             this->size = 0;
             this->capacity_minus_1 = capacity - 1;
         }
-    } data;
+    };
+} // namespace internal
 
+
+/***************************************************************************
+ */
+
+template <typename K,
+          typename V,
+          typename hash_functor,
+          class    erase_policy,
+          size_t   default_size>
+class closed_linear_probing_hash_table : private erase_policy {
+
+    using typename erase_policy::meta_t;
+    using          erase_policy::META_ELEMENTS_PER_WORD;
+    using          erase_policy::META_BITS_PER_ELEMENT;
+    using          erase_policy::VALID;
+    using          erase_policy::INVALID;
+    using          erase_policy::DEFAULT_META_VALUE;
+
+    /* Default static allocated tables, to avoid malloc() for small tables.
+     */
+    char   default_key_table[default_size * sizeof(K)];
+    char   default_val_table[default_size * sizeof(V)];
+    meta_t default_valid[(default_size + erase_policy::META_ELEMENTS_PER_WORD - 1) / erase_policy::META_ELEMENTS_PER_WORD];
+
+
+    internal::closed_linear_probing_hash_table_data_t<K, V, erase_policy> data;
 
 
     /* Increases the size of the hash table
@@ -182,26 +421,16 @@ class closed_linear_probing_hash_table {
         assert(new_size > 0);
 
         /* Allocate new tables */
-        data_t new_data(new_size);
+        internal::closed_linear_probing_hash_table_data_t<K, V, erase_policy> new_data(new_size);
 
         /* Rehash valid elements in the existing table */
-        const meta_t *valid_ptr  = &this->data.valid[0];
-        meta_t        valid_val  =  this->data.valid[0];
-
         hash_functor hash_func;
 
-        for (size_t i = 0; i <= this->data.capacity_minus_1; i++) {
-            if ((valid_val & ((meta_t(1) << META_BITS_PER_ELEMENT) - 1)) == VALID) {
-                size_t hash = hash_func(this->data.key_table[i]);
-                this->add_new(this->data.key_table[i], this->data.value_table[i], new_data, hash);
-                internal::destroy(&this->data.key_table[i]);
-                internal::destroy(&this->data.value_table[i]);
-            }
-            valid_val >>= META_BITS_PER_ELEMENT;
-            if ((i & (META_ELEMENTS_PER_WORD - 1)) == (META_ELEMENTS_PER_WORD - 1)) {
-                valid_ptr++;
-                valid_val = *valid_ptr;
-            }
+        for (size_t i = this->get_first(); i != ~size_t(0); i = this->get_next(i)) {
+            size_t hash = hash_func(this->data.key_table[i]);
+            this->add_new(this->data.key_table[i], this->data.value_table[i], new_data, hash);
+            internal::destroy(&this->data.key_table[i]);
+            internal::destroy(&this->data.value_table[i]);
         }
 
         /* Delete old table and reassign */
@@ -239,6 +468,7 @@ class closed_linear_probing_hash_table {
     template <typename META_T, typename DATA_T>
     static HASH_CONTAINERS_INLINE
     size_t step_idx(size_t idx, meta_t &valid_val /* in/out */, META_T *&valid_ptr, DATA_T &data) {
+
         idx++;
         valid_val >>= META_BITS_PER_ELEMENT;
         /* There are two cases where we need to re-read the valid bit word: 
@@ -274,7 +504,11 @@ class closed_linear_probing_hash_table {
      *     data array for the element. Otherwise, the return value is garbage.
      */
     HASH_CONTAINERS_INLINE
-    size_t get_index(bool &valid, const K &key, const data_t &data, size_t hash) const {
+    size_t get_index(bool &valid /*out*/,
+                     const K &key,
+                     const internal::closed_linear_probing_hash_table_data_t<K, V, erase_policy> &data,
+                     size_t hash) const {
+
         size_t        orig_idx  = hash & data.capacity_minus_1;
         size_t        idx       = orig_idx;
         const meta_t *valid_ptr = data.valid + (idx / META_ELEMENTS_PER_WORD);
@@ -286,14 +520,14 @@ class closed_linear_probing_hash_table {
             // Element doesn't exist
             const meta_t m = (valid_val & ((meta_t(1) << META_BITS_PER_ELEMENT) - 1));
 
-            // Found element
-            if (m == VALID && data.key_table[idx] == key) {
-                valid = true;
-                return idx;
-            }
-
             if (m == INVALID) {
                 break;
+            }
+            
+            // Found element
+            else if (m == VALID && data.key_table[idx] == key) {
+                valid = true;
+                return idx;
             }
 
             // Didn't find it, try the next spot until we do (and wrap around at the ends)
@@ -322,6 +556,7 @@ class closed_linear_probing_hash_table {
      */
     HASH_CONTAINERS_INLINE
     size_t get_index(bool &valid, const K &key) const {
+
         hash_functor hash_func;
         size_t hash = hash_func(key);
         return this->get_index(valid, key, this->data, hash);
@@ -348,7 +583,9 @@ class closed_linear_probing_hash_table {
      *     The position of the inserted element.
      */
     HASH_CONTAINERS_INLINE
-    size_t add_new(const K &key, const V &value, data_t &data, size_t hash) {
+    size_t add_new(const K &key, const V &value,
+                   internal::closed_linear_probing_hash_table_data_t<K, V, erase_policy> &data,
+                   size_t hash) {
 
         restart:
         size_t  idx       = hash & data.capacity_minus_1;
@@ -363,7 +600,7 @@ class closed_linear_probing_hash_table {
                            |                                                     (VALID << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
                 //data.key_table[idx]   = new (data.key_table[idx]) K(key);
                 //data.value_table[idx] = new (data.value_table[idx]) V(value);
-		internal::construct(&data.key_table[idx],   key);
+                internal::construct(&data.key_table[idx],   key);
                 internal::construct(&data.value_table[idx], value);
                 data.size++;
                 return idx;
@@ -371,9 +608,11 @@ class closed_linear_probing_hash_table {
 
             assert(data.key_table[idx] != key);
 
-            // If we have a collision AND load factor is too high, increase
-            // table size. Braxton suggested this optimization: we don't
-            // need to grow the table size if we don't have collisions.
+            /* If we have a collision AND load factor is too high, increase
+             * table size. Braxton suggested this optimization: we don't
+             * need to grow the table size if we don't have collisions.
+             */
+            // TODO: Make this threshold a policy
             if (data.size * 2 > data.capacity_minus_1) {
                 assert(&data == &this->data);
                 increase_table_size((data.capacity_minus_1 + 1) * 2);
@@ -410,6 +649,7 @@ class closed_linear_probing_hash_table {
      */
     HASH_CONTAINERS_INLINE
     size_t add_new(const K &key, const V &value) {
+
         hash_functor hash_func;
         size_t hash = hash_func(key);
 
@@ -431,7 +671,7 @@ class closed_linear_probing_hash_table {
      *     <data> : The data container to use for the lookup.
      */
     HASH_CONTAINERS_INLINE
-    void erase(const K &key, data_t &data) {
+    void erase(const K &key, internal::closed_linear_probing_hash_table_data_t<K, V, erase_policy> &data) {
 
         hash_functor hash_func;
         size_t hash = hash_func(key);
@@ -449,10 +689,9 @@ class closed_linear_probing_hash_table {
         internal::destroy(&data.key_table[idx]);
         internal::destroy(&data.value_table[idx]);
 
-        const size_t word = idx / META_ELEMENTS_PER_WORD;
-        data.valid[word] = (data.valid[word] & ~(((meta_t(1) << META_BITS_PER_ELEMENT) - 1) << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1)))))
-                         |                                                         (DELETED << (META_BITS_PER_ELEMENT * (idx & (META_ELEMENTS_PER_WORD - 1))));
-        data.size--;
+        this->do_erase(idx, this->data.valid, this->data.capacity_minus_1,
+                       this->data.key_table, this->data.value_table, hash_func);
+        this->data.size--;
     }
 
 
@@ -468,25 +707,7 @@ class closed_linear_probing_hash_table {
      */
     HASH_CONTAINERS_INLINE
     size_t get_first() const {
-
-        const size_t num_valid_words = (data.capacity_minus_1 + META_ELEMENTS_PER_WORD) / META_ELEMENTS_PER_WORD;
-        meta_t           *valid_ptr  = &data.valid[0];
-        
-        // static_assert VALID == 1, INVALID == 0, META_BITS_PER_ELEMENT == 2
-        const meta_t mask = 0x55555555;
-
-        for (size_t word = 0; word < num_valid_words; word++) {
-            if (!(*valid_ptr & mask)) {
-                valid_ptr++;
-                continue;
-            }
-
-            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
-
-            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
-        }
-        assert(this->size() == 0);
-        return ~size_t(0);
+        return erase_policy::get_first(this->data.capacity_minus_1, this->data.valid);
     }
 
 
@@ -513,32 +734,7 @@ class closed_linear_probing_hash_table {
         const size_t num_valid_words = (data.capacity_minus_1 + META_ELEMENTS_PER_WORD) / META_ELEMENTS_PER_WORD;
         meta_t           *valid_ptr  = &data.valid[old_pos / META_ELEMENTS_PER_WORD];
 
-        // static_assert VALID == 1, INVALID == 0, META_BITS_PER_ELEMENT == 2
-        const meta_t mask = 0x55555555;
-
-        // Can find the next item in the same chunk as the current one?
-        meta_t next_mask = *valid_ptr & (~meta_t(0) << ((old_pos & (META_ELEMENTS_PER_WORD - 1)) * META_BITS_PER_ELEMENT + 1));
-        if (next_mask & mask) {
-            const unsigned bit = internal::bsf32_nonzero(next_mask & mask);
-            return (old_pos & ~(META_ELEMENTS_PER_WORD - 1)) + bit / META_BITS_PER_ELEMENT;
-        }
-        
-        // Look in later chunks for the next element.
-        valid_ptr++;
-        for (size_t word = (old_pos / META_ELEMENTS_PER_WORD) + 1; word < num_valid_words; word++) {
-
-            if (!(*valid_ptr & mask)) {
-                valid_ptr++;
-                continue;
-            }
-
-            const unsigned bit = internal::bsf32_nonzero(*valid_ptr & mask);
-
-            return word * META_ELEMENTS_PER_WORD + bit / META_BITS_PER_ELEMENT;
-        }
-
-        // Didn't find it
-        return ~size_t(0);
+        return erase_policy::get_next(old_pos, valid_ptr, num_valid_words);
     }
 
 
@@ -1023,7 +1219,6 @@ public:
      */
     HASH_CONTAINERS_INLINE
     void clear() {
-
         const meta_t *valid_ptr  = &this->data.valid[0];
         meta_t        valid_val  =  this->data.valid[0];
 

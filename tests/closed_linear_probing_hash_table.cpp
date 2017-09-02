@@ -31,7 +31,7 @@
 int run_test_00(unsigned test_num, uint64_t random_number, bool debug = false) {
 
     std::unordered_map<uint8_t, uint32_t> gold;
-    hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t, std::hash<uint8_t> > comp;
+    hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t> comp;
 
     const unsigned primes[] = { 3, 5, 7, 11 };
     const unsigned num_operations = ((random_number >> 48) & 1023) + 1; // 1-1024
@@ -103,8 +103,8 @@ int run_test_00(unsigned test_num, uint64_t random_number, bool debug = false) {
             }
 
             {
-                std::unordered_map<uint8_t, uint32_t>::const_iterator                                    gold_f = gold.find(key);
-                hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t, std::hash<uint8_t> >::const_iterator comp_f = comp.find(key);
+                std::unordered_map<uint8_t, uint32_t>::const_iterator                                gold_f = gold.find(key);
+                hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t>::const_iterator comp_f = comp.find(key);
                 bool gold_b = (gold_f != gold.end());
                 bool comp_b = (comp_f != comp.end());
                 if (gold_b != comp_b) {
@@ -180,11 +180,14 @@ int run_test_02(unsigned test_num, uint64_t random_number, bool debug=false) {
 
     std::unordered_map<uint8_t, uint32_t> gold;
     hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t,
-                                                      std::hash<uint8_t>,  1> comp0;
+                                                      std::hash<uint8_t>,
+                                                      hash_containers::erase_policy_rehash, 1> comp0;
     hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t,
-                                                      std::hash<uint8_t>,  8> comp1;
+                                                      std::hash<uint8_t>,
+                                                      hash_containers::erase_policy_rehash, 8> comp1;
     hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t,
-                                                      std::hash<uint8_t>,128> comp2;
+                                                      std::hash<uint8_t>,
+                                                      hash_containers::erase_policy_rehash, 128> comp2;
 
     const unsigned primes[] = { 3, 5, 7, 11 };
     const unsigned num_operations = ((random_number >> 48) & 1023) + 1; // 1-1024
@@ -305,8 +308,8 @@ int run_test_04(unsigned test_num, uint64_t random_number, bool debug=false) {
 
     std::unordered_map<uint8_t, std::shared_ptr<std::string> > gold0;
     std::unordered_map<uint8_t, std::string                  > gold1;
-    hash_containers::closed_linear_probing_hash_table<uint8_t, std::shared_ptr<std::string>, std::hash<uint8_t> > comp0;
-    hash_containers::closed_linear_probing_hash_table<uint8_t, std::string,                  std::hash<uint8_t> > comp1;
+    hash_containers::closed_linear_probing_hash_table<uint8_t, std::shared_ptr<std::string> > comp0;
+    hash_containers::closed_linear_probing_hash_table<uint8_t, std::string                  > comp1;
 
     const unsigned primes[] = { 3, 5, 7, 11 };
     const unsigned num_operations = ((random_number >> 48) & 1023) + 1; // 1-1024
@@ -356,8 +359,9 @@ int run_test_04(unsigned test_num, uint64_t random_number, bool debug=false) {
         { "30", std::shared_ptr<std::string>(new std::string("s30")) },
         { "31", std::shared_ptr<std::string>(new std::string("s31")) },
     };
-
+    
     for (unsigned i = 0; i < num_operations; i++) {
+
         const uint8_t mode = (random_number >> ((i % seq_size) * 2)) & 3;
 
         const uint8_t key = static_cast<uint8_t>(rng() & 0xff);
@@ -444,8 +448,8 @@ int run_test_04(unsigned test_num, uint64_t random_number, bool debug=false) {
             {
                 std::unordered_map<uint8_t, std::shared_ptr<std::string> >::const_iterator gold0_f = gold0.find(key);
                 std::unordered_map<uint8_t, std::string>::const_iterator                   gold1_f = gold1.find(key);
-                hash_containers::closed_linear_probing_hash_table<uint8_t, std::shared_ptr<std::string>, std::hash<uint8_t> >::const_iterator comp0_f = comp0.find(key);
-                hash_containers::closed_linear_probing_hash_table<uint8_t, std::string,                  std::hash<uint8_t> >::const_iterator comp1_f = comp1.find(key);
+                hash_containers::closed_linear_probing_hash_table<uint8_t, std::shared_ptr<std::string> >::const_iterator comp0_f = comp0.find(key);
+                hash_containers::closed_linear_probing_hash_table<uint8_t, std::string                  >::const_iterator comp1_f = comp1.find(key);
 
                 bool gold0_b = (gold0_f != gold0.end());
                 bool gold1_b = (gold1_f != gold1.end());
@@ -581,7 +585,7 @@ int run_test_06(unsigned test_num, uint64_t random_number, bool debug=false) {
     std::unordered_map<std::shared_ptr<std::string>, uint32_t>                                        gold0;
     std::unordered_map<std::string,                  uint32_t>                                        gold1;
     hash_containers::closed_linear_probing_hash_table<std::shared_ptr<std::string>, uint32_t, shared_ptr_string_hash > comp0;
-    hash_containers::closed_linear_probing_hash_table<std::string,                  uint32_t, std::hash<std::string> > comp1;
+    hash_containers::closed_linear_probing_hash_table<std::string,                  uint32_t                         > comp1;
 
     const unsigned primes[] = { 3, 5, 7, 11 };
     const unsigned num_operations = ((random_number >> 48) & 1023) + 1; // 1-1024
@@ -633,6 +637,7 @@ int run_test_06(unsigned test_num, uint64_t random_number, bool debug=false) {
     };
 
     for (unsigned i = 0; i < num_operations; i++) {
+            
         const uint8_t mode = (random_number >> ((i % seq_size) * 2)) & 3;
 
         const uint8_t key = static_cast<uint8_t>(rng() & 0xff);
@@ -640,7 +645,7 @@ int run_test_06(unsigned test_num, uint64_t random_number, bool debug=false) {
 
         std::string                  &s = keys[(key + i) & 31].s;
         std::shared_ptr<std::string>  p = keys[(key + i) & 31].p;
-        
+
         switch (mode) {
         case 0:
             value = rng();
@@ -723,8 +728,7 @@ int run_test_06(unsigned test_num, uint64_t random_number, bool debug=false) {
                 std::unordered_map<std::shared_ptr<std::string>, uint32_t>::const_iterator gold0_f = gold0.find(p);
                 std::unordered_map<std::string,                  uint32_t>::const_iterator gold1_f = gold1.find(s);
                 hash_containers::closed_linear_probing_hash_table<std::shared_ptr<std::string>, uint32_t, shared_ptr_string_hash >::const_iterator comp0_f = comp0.find(p);
-                hash_containers::closed_linear_probing_hash_table<std::string,                  uint32_t, std::hash<std::string> >::const_iterator comp1_f = comp1.find(s);
-
+                hash_containers::closed_linear_probing_hash_table<std::string,                  uint32_t                         >::const_iterator comp1_f = comp1.find(s);
                 bool gold0_b = (gold0_f != gold0.end());
                 bool gold1_b = (gold1_f != gold1.end());
                 bool comp0_b = (comp0_f != comp0.end());
@@ -775,7 +779,7 @@ int run_test_06(unsigned test_num, uint64_t random_number, bool debug=false) {
             break;
         }
     }
-
+    
     std::vector<std::pair<std::shared_ptr<std::string>, uint32_t> > gold0_t(gold0.cbegin(), gold0.cend());
     std::vector<std::pair<std::shared_ptr<std::string>, uint32_t> > comp0_t(comp0.cbegin(), comp0.cend());
     std::vector<std::pair<std::string,                  uint32_t> > gold1_v(gold1.cbegin(), gold1.cend());
@@ -867,7 +871,7 @@ int run_test(unsigned test_num, uint64_t random_number, bool debug = false) {
 int run_directed_test_0(bool debug = false) {
 
     std::unordered_map<uint8_t, uint32_t> gold;
-    hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t, std::hash<uint8_t> > comp;
+    hash_containers::closed_linear_probing_hash_table<uint8_t, uint32_t> comp;
     
     comp.reserve(3);
     comp.reserve(33);
