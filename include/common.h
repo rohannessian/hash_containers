@@ -118,15 +118,8 @@ namespace internal {
         v |= v >> 4;
         v |= v >> 8;
         v |= v >> 16;
-        if (sizeof(size_t) == 8) {
-#if defined _MSC_VER && !defined _WIN64
-#pragma warning(push)          // Turn off this warning in 32-bit builds (where size_t is known to not be 8)
-#pragma warning(disable: 4293) // warning C4293: '>>' : shift count negative or too big, undefined behavior
-#endif
-            v |= v >> 32;
-#if defined _MSC_VER && !defined _WIN64
-#pragma warning(pop)
-#endif
+        for (size_t i = 32; i < sizeof(size_t) * CHAR_BIT; i *= 2) {
+            v |= v >> i;
         }
         v++;
 
